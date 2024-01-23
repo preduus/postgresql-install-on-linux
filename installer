@@ -108,6 +108,7 @@ while true; do
 
       # Check if the distribution is valid
       if [[ $distribution =~ ^[1-4]$ ]]; then
+        echo "Selected ${distributions_options[$((distribution-1))]} distribution"
         while true; do
           show_distribution_arch_options
           read -p "Enter number of desired architecture: " architecture
@@ -118,6 +119,7 @@ while true; do
           elif [[ $architecture -ge 1 && $architecture -le ${#architecture_options[@]} ]]; then
             architecture_alises=("x86_64" "i386")
             selected_architecture="${architecture_alises[$((architecture-1))]}"
+            echo "Selected $selected_architecture architecture"
             case $distribution in
               1)
                 execute_mint_repository_configuration

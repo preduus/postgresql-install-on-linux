@@ -1,0 +1,176 @@
+#!/bin/bash
+
+execute_postgres_apt_check_installation() {
+  echo "Checking installation results ..."
+  psql --version && psql --help
+}
+
+execute_mint_repository_configuration() {
+  sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+  wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+  sudo apt update && \
+  sudo apt install postgresql-$selected_postgresql_version postgresql-contrib postgresql-$selected_postgresql_version-client -y
+}
+
+execute_ubuntu_repository_configuration() {
+  sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+  wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+  sudo apt update && \
+  sudo apt install postgresql-$selected_postgresql_version postgresql-contrib postgresql-client-$selected_postgresql_version -y
+}
+
+execute_redhat_repository_configuration() {
+  el_repo_config_file="[$selected_postgresql_version]
+    name=PostgreSQL $selected_postgresql_version
+    baseurl=https://download.postgresql.org/pub/repos/yum/reporpms/EL-$selected_dist_version_n-$selected_architecture
+    enabled=1
+    gpgcheck=0"
+  sudo sh -c 'echo "$el_repo_config_file" > /etc/yum.repos.d/pgdg.repo'
+
+  sudo yum update -y
+
+  sudo yum install -y postgresql$selected_postgresql_version-server.$selected_architecture && \
+                      postgresql$selected_postgresql_version-devel.$selected_architecture && \
+                      postgresql$selected_postgresql_version-contrib.$selected_architecture && \
+  echo "Checking installation results ..."
+  psql --version && psql --help
+}
+
+execute_fedora_repository_configuration() {
+  fe_repo_url=https://download.postgresql.org/pub/repos/yum/reporpms/F-$selected_dist_version_n-$selected_architecture/pgdg-fedora-repo-latest.noarch.rpm
+  sudo dnf install -y $fe_repo_url && \
+  sudo dnf install -y postgresql$selected_postgresql_version-server
+  echo "Checking installation results ..."
+  psql --version && psql --help
+}
+
+
+show_pgsql_lib_versions_options() {
+  echo "Select PostgreSQL Library Version"
+  postgresql_lib_options=("Version 12" "Version 13" "Version 14" "Version 15" "Exit")
+
+  for ((i=1; i<=${#postgresql_lib_options[@]}; i++)); do
+    echo "$i) ${postgresql_lib_options[$((i-1))]}"
+  done
+}
+
+show_distributions_options() {
+  echo "Select linux distribution:"
+  distributions_options=("Linux Mint" "Ubuntu/Debian" "Red Hat/CentOS" "Fedora" "Back")
+  
+  for ((i=1; i<=${#distributions_options[@]}; i++)); do
+    echo "$i) ${distributions_options[$((i-1))]}"
+  done
+}
+
+show_distribution_arch_options() {
+  echo "Select architecture:"
+  architecture_options=("x86_64 (64bit)" "i386 (32bit)" "Back")
+
+  for ((j=1; j<=${#architecture_options[@]}; j++)); do
+    echo "$j) ${architecture_options[$((j-1))]}"
+  done
+}
+
+show_distribution_versions_options() {
+  echo "Choose a sub-option for ${distributions_options[$((distribution-1))]}:"
+  case $distribution in
+    3)
+      versions_options=("Version 6" "Version 7" "Back")
+      ;;
+    4)
+      versions_options=("Version 38" "Version 39" "Back")
+      ;;
+    *)
+      versions_options=("Back")
+      ;;
+  esac
+
+  for ((j=1; j<=${#versions_options[@]}; j++)); do
+    echo "$j) ${versions_options[$((j-1))]}"
+  done
+}
+
+while true; do
+  show_pgsql_lib_versions_options
+
+  read -p "Enter the number of the desired library version: " postgresql_version
+
+  if [[ $postgresql_version =~ ^[1-4]$ ]]; then
+    selected_postgresql_v="${postgresql_lib_options[$((postgresql_version-1))]}"
+    selected_postgresql_version=$(echo "$selected_postgresql_v" | grep -o '[[:digit:]]\+')
+    echo "Selected $selected_postgresql_version version"
+    while true; do
+      show_distributions_options
+
+      # Get user distribution
+      read -p "Enter the number of the desired dist.: " distribution
+
+      # Check if the distribution is valid
+      if [[ $distribution =~ ^[1-4]$ ]]; then
+        while true; do
+          show_distribution_arch_options
+          read -p "Enter number of desired architecture: " architecture
+
+          if [[ $architecture -eq 0 || $architecture -eq 3 ]]; then
+            echo "Returning to the main menu."
+            break
+          elif [[ $architecture -ge 1 && $architecture -le ${#architecture_options[@]} ]]; then
+            architecture_alises=("x86_64" "i386")
+            selected_architecture="${architecture_alises[$((architecture-1))]}"
+            case $distribution in
+              1)
+                execute_mint_repository_configuration
+                execute_postgres_apt_check_installation
+                ;;
+              2)
+                execute_ubuntu_repository_configuration
+                execute_postgres_apt_check_installation
+                ;;
+              3|4)
+                while true; do
+                  show_distribution_versions_options
+                  read -p "Enter number of desired version: " version
+
+                  if [[ $version -eq 0 || $version -eq 3 ]]; then
+                      echo "Returning to the main menu."
+                      break
+                  elif [[ $version -ge 1 && $version -le ${#versions_options[@]} ]]; then
+                      selected_dist_version="${versions_options[$((version-1))]}"
+                      selected_dist_version_n=$(echo "$selected_dist_version" | grep -o '[[:digit:]]\+')
+
+                      case $distribution in
+                        3)
+                          execute_redhat_repository_configuration
+                          ;;
+                        4)
+                          execute_fedora_repository_configuration
+                          ;;
+                      esac
+                  else
+                      echo "Invalid option. Please choose a number from 0 to ${#versions_options[@]}."
+                  fi
+
+                  break
+                done
+                ;;
+            esac
+
+            echo "Thank you for use! See you!"
+            exit 0
+          else
+            echo "Invalid option. Please choose a number from 0 to ${#architecture_options[@]}."
+          fi
+        done
+      elif [[ $distribution -eq 5 ]]; then
+        break
+      else
+        echo "Invalid option. Please choose a number from 0 to ${#distributions_options[@]}."
+      fi
+    done
+  elif [[ $postgresql_version -eq 5 ]]; then
+    exit 0
+  else
+    echo "Invalid option. Please choose a number from 1 to 4."
+  fi
+done
